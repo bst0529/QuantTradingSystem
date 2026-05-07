@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/QuantTrading.Api/QuantTrading.Api.csproj" />
+    <Project Path="src/QuantTrading.Core/QuantTrading.Core.csproj" />
+    <Project Path="src/QuantTrading.Worker/QuantTrading.Worker.csproj" />
+  </Folder>
+</Solution>

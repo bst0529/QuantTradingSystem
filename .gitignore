@@ -1,0 +1,19 @@
+# 忽略所有的編譯結果
+bin/
+obj/
+
+# 忽略 VS Code 設定檔
+.vscode/
+
+# 忽略前端的安裝套件
+node_modules/
+dist/
+
+# 🛑 絕對機密：忽略本地資料庫檔案 (非常重要！)
+*.db
+*.db-shm
+*.db-wal
+
+# 🛑 絕對機密：忽略本地設定檔 (如果你有放 API Key 的話)
+appsettings.json
+appsettings.Development.json
