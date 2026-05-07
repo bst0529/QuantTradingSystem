@@ -32,3 +32,4 @@ EXPOSE 8080
 
 # 啟動應用程式
 ENTRYPOINT ["dotnet", "QuantTrading.Api.dll"]
+
