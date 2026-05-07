@@ -1,5 +1,5 @@
 # 使用 .NET 10 執行環境作為基底
-FROM mcr.microsoft.com/dotnet/10.0-alpine AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS base
 WORKDIR /app
 EXPOSE 5050
 ENV ASPNETCORE_URLS=http://+:5050
