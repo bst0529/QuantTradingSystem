@@ -34,16 +34,19 @@ jobs:
       - name: Build and push container image to registry
         uses: azure/container-apps-deploy-action@v2
         with:
-          appSourcePath: ${{ github.workspace }}src/QuantTrading.Api
-          _dockerfilePathKey_: _dockerfilePath_
-          _targetLabelKey_: _targetLabel_
+          # 1. 指向原始碼所在的 src 資料夾
+          appSourcePath: ${{ github.workspace }}/src
+          
+          # 2. 指定 Dockerfile 的相對路徑 (相對於上面的 src)
+          dockerfilePath: QuantTrading.Api/Dockerfile
+          
+          # 3. 登錄設定
           registryUrl: registryquant2026.azurecr.io
           registryUsername: ${{ secrets.QUANTAPI_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.QUANTAPI_REGISTRY_PASSWORD }}
+          
+          # 4. 目標設定
           containerAppName: quant-api
           resourceGroup: rg-quant-trading
           imageToBuild: registryquant2026.azurecr.io/quant-api:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
-
 
