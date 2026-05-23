@@ -2,6 +2,7 @@
   <div class="dashboard-container">
     <h2>📈 0050 量化交易與 AI 情緒回測系統</h2>
     <div v-if="loading" class="loading">資料載入中...請確認後端 API 已啟動</div>
+    <div v-if="haveErrorMsg" class="loading">{{ errorMsg }}</div>
     <div ref="chartRef" class="chart-box"></div>
   </div>
 </template>
@@ -12,11 +13,22 @@ import * as echarts from 'echarts'
 
 const chartRef = ref(null)
 const loading = ref(true)
+const haveErrorMsg = ref(true)
+const errorMsg = ref('')
 
 onMounted(async () => {
   try {
     const response = await fetch('http://localhost:5050/api/strategy/0050?startDate=2023-01-01&endDate=2026-05-07')
-    if (!response.ok) throw new Error('API 發生錯誤')
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      errorMsg.value = errorData.message;
+      haveErrorMsg.value = true;
+      loading.value = false
+      return
+    } else {
+      haveErrorMsg.value = false;
+    }
     
     const apiData = await response.json()
     const dataList = apiData.results || []

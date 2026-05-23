@@ -3,23 +3,25 @@ version: '3.8'
 services:
   api:
     build:
-      context: ./src
-      dockerfile: QuantTrading.Api/Dockerfile
+      context: .
+      dockerfile: src/QuantTrading.Api/Dockerfile
     ports:
-      - "5050:5050"
+      - "5050:8080"
     volumes:
       - sqldata:/app/data
     environment:
       - ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db
+      - TZ=Asia/Taipei # 加入時區確保量化系統時間正確
 
   worker:
     build:
-      context: ./src
-      dockerfile: QuantTrading.Worker/Dockerfile
+      context: .
+      dockerfile: src/QuantTrading.Worker/Dockerfile
     volumes:
       - sqldata:/app/data
     environment:
       - ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db
+      - TZ=Asia/Taipei
     depends_on:
       - api
 

@@ -16,3 +16,7 @@ dist/
 *.db
 *.db-shm
 *.db-wal
+
+# 🛑 絕對機密：忽略本地設定檔 (如果你有放 API Key 的話)
+appsettings.json
+appsettings.Development.json
