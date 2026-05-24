@@ -8,16 +8,30 @@ namespace QuantTrading.Core.Repositories;
 public class StockRepository
 {
     private readonly string _connectionString;
+    private static bool _initialized = false;
 
     public StockRepository(string connectionString)
     {
         _connectionString = connectionString;
     }
 
+    public void EnsureTableExistsSafe()
+    {
+        if (_initialized)
+            return;
+
+        EnsureTableExists();
+        _initialized = true;
+    }
+
     public void EnsureTableExists()
     {
         using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         connection.Open();
+
+        // 加 busy timeout
+        connection.Execute("PRAGMA busy_timeout = 5000;");
+
         var command = connection.CreateCommand();
         // 建立 DailyPrice 表格 (包含我們策略需要的欄位)
         command.CommandText = @"
@@ -38,21 +52,15 @@ public class StockRepository
             CREATE UNIQUE INDEX IF NOT EXISTS idx_symbol_date_unique ON DailyPrice (Symbol, Date);
         ";
         command.ExecuteNonQuery();
-
-        // 僅供本機測試：如果沒資料就塞入一筆 0050
-        // command.CommandText = "SELECT COUNT(*) FROM DailyPrice";
-        // long count = (long)command.ExecuteScalar()!;
-        // if (count == 0) {
-        //     command.CommandText = "INSERT INTO DailyPrice (Symbol, Date, Open, High, Low, Close, Volume, SentimentScore) VALUES ('0050', '2023-05-07', 120, 122, 119, 121, 1000, 0.5)";
-        //     command.ExecuteNonQuery();
-        // }
     }  
 
     // 取得歷史資料 (供前端回測與圖表使用)
     public async Task<IEnumerable<DailyPrice>> GetHistoricalDataAsync(string symbol, DateTime startDate, DateTime endDate)
     {
         using IDbConnection db = new SqliteConnection(_connectionString);
-        
+        db.Open();
+        db.Execute("PRAGMA busy_timeout = 5000;");
+
         // 🛡️ 資安防護：使用 @Symbol 等參數化寫法，絕對禁止使用字串拼接 (如 $"WHERE Symbol = '{symbol}'")
         const string sql = @"
             SELECT * FROM DailyPrice 
@@ -72,6 +80,8 @@ public class StockRepository
     {
         using IDbConnection db = new SqliteConnection(_connectionString);
         db.Open();
+        db.Execute("PRAGMA busy_timeout = 5000;");
+
         using var transaction = db.BeginTransaction();
         
         // 高效能批次寫入 (Upsert)

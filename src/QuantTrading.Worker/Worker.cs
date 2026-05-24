@@ -25,9 +25,19 @@ public class Worker : BackgroundService
     {
         _logger.LogInformation("🚀 量化交易 AI 數據 Worker 已啟動。");
 
-        _stockRepo.EnsureTableExists();
-
         // 1. 先補全歷史資料 (已換成 FinMind 真實數據)
+        await Task.Delay(10000, stoppingToken);  // 等待 volume mount
+
+        try
+        {
+            _stockRepo.EnsureTableExists();
+            _logger.LogInformation("✅ DB 初始化完成");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ DB 初始化失敗");
+        }
+
         await EnsureHistoricalDataAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -134,102 +144,6 @@ public class Worker : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ 抓取 FinMind 資料時發生錯誤。");
-        }
-    }    
-    private async Task EnsureHistoricalDataAsync1(CancellationToken ct)
-    {
-        _logger.LogInformation("🔍 正在檢查資料庫資料...");
-        var existingData = await _stockRepo.GetHistoricalDataAsync(Symbol, DateTime.Today.AddYears(-1), DateTime.Today);
-        
-        if (existingData != null && existingData.Any()) {
-            _logger.LogInformation("✅ 資料庫已有資料。");
-            return;
-        }
-
-        _logger.LogInformation("⚠️ Yahoo API 401 故障，啟動 Mock 數據產生器以維持開發...");
-        
-        var mockPrices = new List<DailyPrice>();
-        double lastClose = 140.0; // 起始價格
-        var rng = new Random();
-
-        for (int i = 365; i >= 0; i--)
-        {
-            var date = DateTime.Today.AddDays(-i);
-            if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday) continue;
-
-            // 模擬隨機震盪
-            double change = (rng.NextDouble() * 4 - 2); // -2.0 ~ +2.0
-            double open = lastClose + (rng.NextDouble() - 0.5);
-            double close = open + change;
-            double high = Math.Max(open, close) + rng.NextDouble();
-            double low = Math.Min(open, close) - rng.NextDouble();
-
-            mockPrices.Add(new DailyPrice
-            {
-                Symbol = Symbol,
-                Date = date,
-                Open = Math.Round(open, 2),
-                High = Math.Round(high, 2),
-                Low = Math.Round(low, 2),
-                Close = Math.Round(close, 2),
-                Volume = rng.Next(5000000, 20000000),
-                SentimentScore = rng.NextDouble(),
-                MLPredictionProb = 0.5
-            });
-            lastClose = close;
-        }
-
-        await _stockRepo.InsertPricesAsync(mockPrices);
-        _logger.LogInformation("✨ Mock 數據注入完成！現在去刷網頁吧！");
-    } 
-    private async Task EnsureHistoricalDataAsync0(CancellationToken ct)
-    {
-        _logger.LogInformation("🔍 正在檢查資料庫中 0050 的歷史資料...");
-
-        try
-        {
-            // 1. 檢查資料庫是否已有資料 (假設 Repository 有提供 GetPricesAsync 或類似方法)
-            // 如果你的 Repository 還沒有檢查功能，可以先簡單用一個 Count 查詢
-            var existingData = await _stockRepo.GetHistoricalDataAsync(Symbol, DateTime.Today.AddYears(-1), DateTime.Today);
-            
-            if (existingData.Any())
-            {
-                _logger.LogInformation($"✅ 已有 {existingData.Count()} 筆資料，跳過歷史初始化。");
-                return;
-            }
-
-            // 2. 如果沒資料，開始抓取過去一年的歷史行情
-            _logger.LogInformation("Empty database detected! 正在從 Yahoo Finance 補全過去一年的歷史資料...");
-            
-            var endDate = DateTime.Now;
-            var startDate = endDate.AddYears(-1);
-            
-            // 從 Yahoo Finance 抓取
-            var history = await Yahoo.GetHistoricalAsync(YahooSymbol, startDate, endDate, Period.Daily, ct);
-
-            // 3. 轉換為 DailyPrice 物件列表
-            var historicalPrices = history.Select(candle => new DailyPrice
-            {
-                Symbol = Symbol,
-                Date = candle.DateTime,
-                Open = (double)candle.Open,
-                High = (double)candle.High,
-                Low = (double)candle.Low,
-                Close = (double)candle.Close,
-                Volume = (long)candle.Volume,
-                SentimentScore = 0.5, // 歷史資料我們給予中性分數 0.5
-                MLPredictionProb = 0.0
-            }).ToList();
-
-            // 4. 批次寫入資料庫 (使用你原有的 InsertPricesAsync)
-            _logger.LogInformation($"正在寫入 {historicalPrices.Count} 筆歷史數據到 SQLite...");
-            await _stockRepo.InsertPricesAsync(historicalPrices);
-            
-            _logger.LogInformation("✨ 歷史資料補全完成！");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "❌ 初始化歷史資料時發生錯誤。");
         }
     }    
 }

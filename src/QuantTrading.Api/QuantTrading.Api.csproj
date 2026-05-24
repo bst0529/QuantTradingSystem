@@ -17,7 +17,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\QuantTrading.Core\QuantTrading.Core.csproj" />
-    <ProjectReference Include="..\QuantTrading.Worker\QuantTrading.Worker.csproj" />
   </ItemGroup>
 
 </Project>

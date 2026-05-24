@@ -20,7 +20,7 @@ WORKDIR /app
 
 # 建立共用磁碟區並賦予權限
 RUN mkdir /app/data && chown -R app:app /app/data
-# USER app
+USER app
 
 COPY --from=build /app/publish .
 

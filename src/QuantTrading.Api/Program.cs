@@ -4,6 +4,17 @@ using QuantTrading.Core.Repositories;
 using QuantTrading.Core.Services;
 using Serilog;
 
+Directory.CreateDirectory("/app/data");
+Directory.CreateDirectory("/app/data/logs");
+
+var dbPath = "/app/data/quant_data.db";
+
+if (!File.Exists(dbPath))
+{
+    File.Create(dbPath).Dispose();
+}
+
+
 var builder = WebApplication.CreateBuilder(args);
 
 Log.Logger = new LoggerConfiguration()
@@ -13,7 +24,7 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .WriteTo.Console()
     // 將 Log 寫入我們掛載的持久化磁碟區 /app/data/logs 底下
-    .WriteTo.File("logs/api-log-.txt",
+    .WriteTo.File("/app/data/logs/api-log-.txt",
         rollingInterval: RollingInterval.Day, // 每天自動開一個新檔案 (例如: api-log-20260523.txt)
         retainedFileCountLimit: 30)           // 最多保留 30 天，避免硬碟塞爆
     .CreateLogger();
@@ -47,22 +58,30 @@ try
 
     var app = builder.Build();
 
-    using (var scope = app.Services.CreateScope())
-    {
-        var repo = scope.ServiceProvider.GetRequiredService<StockRepository>();
-        repo.EnsureTableExists();
-    }
-
     app.UseCors("StrictCorsPolicy");
 
     // 🛡️ 資安設定 2：強制 HTTPS (生產環境必備)
-    app.UseHttpsRedirection();
+    //app.UseHttpsRedirection();
 
     // 📈 建立 Minimal API 端點
     app.MapGet("/api/strategy/{symbol}", async (string symbol, DateTime startDate, DateTime endDate, StockRepository repo, StrategyEngine engine) =>
     {
-        // 1. 嘗試從資料庫取得資料
-        var data = await repo.GetHistoricalDataAsync(symbol, startDate, endDate);
+
+        IEnumerable<DailyPrice> data = Enumerable.Empty<DailyPrice>();
+
+        for (int i = 0; i < 5; i++)
+        {
+            try
+            {
+                data = await repo.GetHistoricalDataAsync(symbol, startDate, endDate);
+                break;
+            }
+            catch
+            {
+                await Task.Delay(3000);
+            }
+        }
+
         var dataList = data.ToList();
 
         // 🌟 2. 核心修改：如果 DB 沒資料，觸發即時撈取 (Read-Through Cache)
@@ -91,7 +110,23 @@ try
                     }).ToList();
 
                     // 將抓回來的資料寫入 SQLite 緩存
-                    await repo.InsertPricesAsync(newPrices);
+
+                    bool inserted = false;
+
+                    for (int i = 0; i < 5; i++)
+                    {
+                        try
+                        {
+                            await repo.InsertPricesAsync(newPrices);
+                            inserted = true;
+                            break;
+                        }
+                        catch
+                        {
+                            await Task.Delay(3000);
+                        }
+                    }
+
 
                     // 更新 dataList 讓後續的策略引擎有資料可以算
                     dataList = newPrices;
@@ -116,7 +151,7 @@ try
         return Results.Ok(new { results });
     });
 
-    app.Run();
+    app.Run("http://0.0.0.0:8080");
 }
 catch (Exception ex)
 {

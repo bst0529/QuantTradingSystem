@@ -3,6 +3,8 @@ using QuantTrading.Core.Services;
 using QuantTrading.Worker;
 using Serilog;
 
+Directory.CreateDirectory("/app/data");
+Directory.CreateDirectory("/app/data/logs");
 var builder = Host.CreateApplicationBuilder(args);
 
 Log.Logger = new LoggerConfiguration()
@@ -11,7 +13,7 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .WriteTo.Console()
     // Worker 的 Log 存成 worker-log-.txt
-    .WriteTo.File("logs/worker-log-.txt",
+    .WriteTo.File("/app/data/logs/worker-log-.txt",
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 30)
     .CreateLogger();
