@@ -18,7 +18,7 @@ const errorMsg = ref('')
 
 onMounted(async () => {
   try {
-    const response = await fetch('http://localhost:5050/api/strategy/0050?startDate=2023-01-01&endDate=2026-05-07')
+    const response = await fetch('https://quant-api.purplesmoke-0c574d76.koreacentral.azurecontainerapps.io/api/strategy/0050?startDate=2023-01-01&endDate=2026-05-07')
 
     if (!response.ok) {
       const errorData = await response.json()

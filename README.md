@@ -1,4 +1,4 @@
-## 環境準備
+## 📂 第一步：環境準備
 在你的電腦上，請確保已安裝以下工具：
 
 1. Git (用於版本控制與 GitHub 同步)
@@ -6,7 +6,7 @@
 3. Node.js (用於執行前端 Vue)
 4. Docker Desktop (本機測試用，非必備)
 
-## 基礎設施全自動建置 (Azure)
+## 第二步：基礎設施全自動建置 (Azure)
 打開你的 PowerShell，登入 Azure：
 ``` 
 # PowerShell
@@ -185,6 +185,77 @@ npm run dev
 > # JavaScript
 > const response = await fetch('https://quant-api.xxx.koreacentral.azurecontainerapps.io/api/strategy/0050?...')
 > ```
+
+## 建立 Azure Static Web App (前端)
+```
+# PowerShell
+$SWA = "quant-frontend"
+
+Write-Host "正在建立 Azure Static Web App 前端網頁..."
+# 確保安裝最新版的 staticwebapp 擴充功能
+az extension add --name staticwebapp --upgrade
+
+# 建立 SWA 資源 (免費層級 Free SKU)
+# 這步驟會自動把 SWA 綁定到你的 GitHub 儲存庫，並幫你在 GitHub 自動生出前端的 CI/CD 檔案！
+az staticwebapp create `
+    --name $SWA `
+    --resource-group $RG `
+    --location "koreacentral" `
+    --source "https://github.com/你的GITHUB帳號/你的REPO名稱" `
+    --branch "main" `
+    --app-location "quant-frontend" `
+    --output-location "dist" `
+    --login-with-github
+```
+
+> * -app-location: 指向你專案中前端資料夾的名稱 quant-frontend。
+> *  --output-location: Vue 經由 npm run build 打包後的輸出資料夾名稱（通常是 dist）。
+> *  執行這行時，命令列會跳出 GitHub 授權提示，以便 Azure 自動去你的 GitHub 設定部署金鑰。
+
+> (LocationNotAvailableForResourceType) The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
+Code: LocationNotAvailableForResourceType
+Message: The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
+
+> 由於 Azure 學生訂閱（Azure for Students）有嚴格的地區防護原則（鎖定 koreacentral），而 Azure 官方並未在韓國機房提供 Static Web Apps 服務。為了達成「100% 繞過限制且完全免費」的終極自動化，我們採用 Azure Storage Account 靜態網站 方案，將前後端收攏在同一機房！
+
+## Azure Storage Account 
+這功能完全免費、支援全球存取，而且因為它屬於儲存體，絕對可以蓋在韓國中部！
+1. 開啟儲存體的靜態網站功能
+沿用之前建好的儲存體 $STA，在裡面開闢一個網頁空間：
+```
+# PowerShell
+# 啟用儲存體的靜態網站功能，並指定首頁為 index.html
+az storage blob service-properties update `
+    --account-name $STA `
+    --static-website true `
+    --index-document index.html `
+    --404-document index.html
+```
+
+2. 取得前端專屬網址
+執行這行，它會印出前端以後在網路上的正式網址：
+```
+# PowerShell
+# 查詢網頁的 Web 終端節點 (URL)
+az storage account show --name $STA --resource-group $RG --query "primaryEndpoints.web" --output tsv
+```
+> 這將網址記下來
+
+3. 上傳網頁
+既然不能走 SWA 的 GitHub 管道，只要在本地端切換到 quant-frontend 執行打包，然後用 CLI 送上雲端：
+```
+# PowerShell
+# 切換到前端目錄
+cd D:\Code\Test\QuantTradingSystem\quant-frontend
+npm run build
+
+# 用一鍵指令把 dist 裡面的所有網頁檔案，直接塞進雲端儲存體的 $web 容器中
+az storage blob upload-batch `
+    --account-name $STA `
+    --source ./dist `
+    --destination '$web' `
+    --overwrite true
+```
 
 ## 大功告成
 
