@@ -42,12 +42,11 @@ try
 
     builder.Services.AddCors(options =>
     {
-        options.AddPolicy("StrictCorsPolicy", policy =>
+        options.AddPolicy("AllowAll", policy =>
         {
-            //policy.WithOrigins(allowedOrigins)
-            //      .AllowAnyMethod()
-            //      .AllowAnyHeader();
-            policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
         });
     });
 
@@ -58,7 +57,7 @@ try
 
     var app = builder.Build();
 
-    app.UseCors("StrictCorsPolicy");
+    app.UseCors("AllowAll");
 
     // 🛡️ 資安設定 2：強制 HTTPS (生產環境必備)
     //app.UseHttpsRedirection();

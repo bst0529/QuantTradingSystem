@@ -45,7 +45,8 @@ public class StockRepository
                 Close REAL,
                 Volume INTEGER,
                 SentimentScore REAL,
-                MLPredictionProb REAL
+                MLPredictionProb REAL,
+                AiAdvice TEXT
             );
             --CREATE INDEX IF NOT EXISTS idx_symbol_date ON DailyPrice (Symbol, Date);
             -- 🛡️ 關鍵：改用 UNIQUE INDEX，Upsert (ON CONFLICT) 才能生效
@@ -86,10 +87,17 @@ public class StockRepository
         
         // 高效能批次寫入 (Upsert)
         const string sql = @"
-            INSERT INTO DailyPrice (Symbol, Date, Open, High, Low, Close, Volume, SentimentScore, MLPredictionProb)
-            VALUES (@Symbol, @Date, @Open, @High, @Low, @Close, @Volume, @SentimentScore, @MLPredictionProb)
-            ON CONFLICT(Symbol, Date) DO UPDATE SET
-            Close = excluded.Close, Volume = excluded.Volume, SentimentScore = excluded.SentimentScore;";
+INSERT INTO DailyPrice (Symbol, Date, Open, High, Low, Close, Volume, SentimentScore, MLPredictionProb, AiAdvice)
+VALUES (@Symbol, @Date, @Open, @High, @Low, @Close, @Volume, @SentimentScore, @MLPredictionProb, @AiAdvice)
+ON CONFLICT(Symbol, Date) DO UPDATE SET
+    Open = excluded.Open,
+    High = excluded.High,
+    Low = excluded.Low,
+    Close = excluded.Close,
+    Volume = excluded.Volume,
+    SentimentScore = excluded.SentimentScore,
+    MLPredictionProb = excluded.MLPredictionProb,
+    AiAdvice = excluded.AiAdvice;";
 
         await db.ExecuteAsync(sql, prices, transaction);
         transaction.Commit();

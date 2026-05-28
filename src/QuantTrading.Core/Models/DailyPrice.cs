@@ -13,4 +13,6 @@ public class DailyPrice
     // AI 擴充欄位
     public double SentimentScore { get; set; } 
     public double MLPredictionProb { get; set; }
+    // 對應資料庫的 AiAdvice 欄位
+    public string? AiAdvice { get; set; }
 }

@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/QuantTrading.Api/QuantTrading.Api.csproj" />
     <Project Path="src/QuantTrading.Core/QuantTrading.Core.csproj" />
+    <Project Path="src/QuantTrading.Functions/QuantTrading.Functions.csproj" Id="416efce8-0a9b-47d5-8b7e-2d3c921a7d7c" />
     <Project Path="src/QuantTrading.Worker/QuantTrading.Worker.csproj" />
   </Folder>
 </Solution>
