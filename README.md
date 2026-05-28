@@ -216,7 +216,7 @@ az staticwebapp create `
 Code: LocationNotAvailableForResourceType
 Message: The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
 
-> 由於 Azure 學生訂閱（Azure for Students）有嚴格的地區防護原則（鎖定 koreacentral），而 Azure 官方並未在韓國機房提供 Static Web Apps 服務。為了達成「100% 繞過限制且完全免費」的終極自動化，我們採用 Azure Storage Account 靜態網站 方案，將前後端收攏在同一機房！
+> <span style="color:red;">由於 Azure 學生訂閱（Azure for Students）有嚴格的地區防護原則（鎖定 koreacentral），而 Azure 官方並未在韓國機房提供 Static Web Apps 服務。為了達成「100% 繞過限制且完全免費」的終極自動化，我們採用 Azure Storage Account 靜態網站 方案，將前後端收攏在同一機房！</span>
 
 ## Azure Storage Account 
 這功能完全免費、支援全球存取，而且因為它屬於儲存體，絕對可以蓋在韓國中部！
@@ -249,7 +249,7 @@ az storage account show --name $STA --resource-group $RG --query "primaryEndpoin
 cd D:\Code\Test\QuantTradingSystem\quant-frontend
 npm run build
 
-# 用一鍵指令把 dist 裡面的所有網頁檔案，直接塞進雲端儲存體的 $web 容器中
+# 把 dist 裡面的所有網頁檔案，直接塞進雲端儲存體的 $web 容器中
 az storage blob upload-batch `
     --account-name $STA `
     --source ./dist `
@@ -266,6 +266,15 @@ az storage blob upload-batch `
 # 1. 刪除整個雲端資源群組 (API, Worker, DB, 儲存體一次抹除)
 az group delete --name rg-quant-trading-2026 --yes --no-wait
 
+# 查閱資源群組的狀態
+az group show --name rg-quant-trading-2026 --query "properties.provisioningState" --output tsv
+
 # 2. 刪除 GitHub 部署專用的虛擬帳戶
 az ad sp delete --id "http://quant-deploy-sp-2026"
+
+# 複查是否刪除
+az ad sp list --display-name "quant-deploy-sp-2026" --query "[].id" --output tsv
+
+# 未刪除
+az ad sp delete --id "把剛剛印出來的ID貼在這裡"
 ```
