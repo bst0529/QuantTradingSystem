@@ -312,13 +312,27 @@ npm run dev
 > # JavaScript
 > const response = await fetch('http://localhost:5050/api/strategy/0050?...')
 > ```
-> 當你的後端成功透過 CI/CD 部署到 Azure 後，請到 Azure Portal 的 quant-api 頁面複製 Application Url，並將 App.vue 裡的網址替換為雲端網址，例如：
+> 當你的後端成功透過 CI/CD 部署到 Azure 後，請取得 Azure Portal 的 quant-api 的 Application Url，並將 App.vue 裡的網址替換為雲端網址，例如：
+> ```
+> # PowerShell
+> az containerapp show `
+>   --name quant-api `
+>   --resource-group rg-quant-trading-2026 `
+>   --query "properties.configuration.ingress.fqdn" `
+>   --output tsv 
+> ```
+
 > ```
 > # JavaScript
 > const response = await fetch('https://quant-api.xxx.koreacentral.azurecontainerapps.io/api/strategy/0050?...')
 > ```
 
-## 5-1 建立 Azure Static Web App (前端)
+## 5-1 建立 Azure Static Web App (前端) -- 不可用
+> (LocationNotAvailableForResourceType) The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
+Code: LocationNotAvailableForResourceType
+Message: The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
+
+> <span style="color:red;">由於 Azure 學生訂閱（Azure for Students）有嚴格的地區防護原則（鎖定 koreacentral），而 Azure 官方並未在韓國機房提供 Static Web Apps 服務。為了達成「100% 繞過限制且完全免費」的終極自動化，我們採用 Azure Storage Account 靜態網站 方案，將前後端收攏在同一機房！</span>
 ```
 # PowerShell
 $SWA = "quant-frontend"
@@ -344,11 +358,7 @@ az staticwebapp create `
 > *  --output-location: Vue 經由 npm run build 打包後的輸出資料夾名稱（通常是 dist）。
 > *  執行這行時，命令列會跳出 GitHub 授權提示，以便 Azure 自動去你的 GitHub 設定部署金鑰。
 
-> (LocationNotAvailableForResourceType) The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
-Code: LocationNotAvailableForResourceType
-Message: The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
 
-> <span style="color:red;">由於 Azure 學生訂閱（Azure for Students）有嚴格的地區防護原則（鎖定 koreacentral），而 Azure 官方並未在韓國機房提供 Static Web Apps 服務。為了達成「100% 繞過限制且完全免費」的終極自動化，我們採用 Azure Storage Account 靜態網站 方案，將前後端收攏在同一機房！</span>
 
 ## 5-2 啟用 Azure Storage 靜態網站功能
 這功能完全免費、支援全球存取，而且因為它屬於儲存體，絕對可以蓋在韓國中部！
@@ -378,7 +388,7 @@ az storage account show --name $STA --resource-group $RG --query "primaryEndpoin
 ```
 # PowerShell
 # 切換到前端目錄
-cd D:\Code\Test\QuantTradingSystem\quant-frontend
+cd D:\Code\QuantTradingSystem\quant-frontend
 npm run build
 
 # 把 dist 裡面的所有網頁檔案，直接塞進雲端儲存體的 $web 容器中

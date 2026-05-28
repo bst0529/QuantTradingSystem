@@ -69,7 +69,7 @@ public class AiAgentFunction
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Groq API 呼叫失敗。");
-            return new OkObjectResult(new { advice = "大盤維持既有趨勢，量能放大，建議維持既有防禦性策略 。" });
+            return new OkObjectResult(new { advice = "Groq API 呼叫失敗。" });
         }
     }
 }
