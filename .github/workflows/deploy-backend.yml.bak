@@ -1,3 +1,4 @@
+#YAML
 name: Deploy API to Azure Container Apps
 
 on:
@@ -6,7 +7,6 @@ on:
     paths:
       - 'src/**'
       - '.github/workflows/**'
-  workflow_dispatch: # 加上這行，就能在 GitHub 網頁上手動點擊執行按鈕
 
 # 請確保這裡的變數名稱與你 PowerShell 腳本中的名稱一致
 env:
