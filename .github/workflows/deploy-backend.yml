@@ -18,6 +18,8 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Taipei # 這裡設定台灣時區
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3

@@ -5,7 +5,7 @@
 2. Azure CLI (用於執行自動化建置腳本)
 3. Node.js (用於執行前端 Vue)
 4. Docker Desktop (本機測試用，非必備)
-5. Fork 專案 (https://github.com/bst0529/QuantTradingSystem)並下載
+5. Fork 專案 (https://github.com/bst0529/QuantTradingSystem) 並下載
 
 ## 2. 基礎設施全自動建置 (Azure)
 打開你的 PowerShell，登入 Azure：
@@ -163,7 +163,7 @@ jobs:
 > 魔法說明：只要你把程式碼 Push 到 GitHub 的 main 分支，這個腳本就會自動打包最新的 Docker Image、上傳，並通知 Azure 把新的 API 跑起來，完全不需要手動操作！
 
 ## 4.建立 Azure AI 大模型
-0. 如果 Azure 訂閱帳號目前「尚未解鎖」使用 AI 服務（Cognitive Services）的權限
+0. 如果 Azure 訂閱帳號目前「尚未解鎖」使用 AI 服務（Cognitive Services）的權限 -- 略過
 
 ```
 # PowerShell
@@ -174,11 +174,11 @@ az provider register --namespace Microsoft.CognitiveServices
 az provider show --namespace Microsoft.CognitiveServices --query "registrationState"
 ```
 
-1. 建立 Azure AI 服務並部署 GPT-4o/大模型
+1. 建立 Azure AI 服務並部署 GPT-4o/大模型 -- 不可行
 
 > <span style="color:red;">RequestDisallowedByAzure: This policy maintains a set of best available regions where your subscription can deploy resources. 是 Azure 最嚴格的訂閱級別地區鎖定政策 (Policy Lock)。</span>
 
-2. 改用官方 OpenAI API
+2. 改用官方 OpenAI API -- 不可行
 > <span style="color:red;">帳號裡面沒有預先儲值（Prepaid）金額，伺服器就會直接把你擋在門外並回傳 429 錯誤。</span>
 
 3. 改用 Groq
@@ -230,12 +230,6 @@ az functionapp show `
     --output tsv
 ```
 > 記得把名稱換成你實際的變數或名稱
-
-取得 FunctionKey (沒使用到，採用大門敞開，免鑰匙進入)
-```
-# PowerShell
-az functionapp keys list --name $FUNCTIONS_APP --resource-group rg-quant-trading-2026 --query "functionKeys.default" --output tsv
-```
 
 
 ### 步驟 4-3：AI 代理程式參數調整 (C# .NET 8)
