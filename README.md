@@ -1,12 +1,13 @@
-## 📂 第一步：環境準備
+## 1. 環境準備
 在你的電腦上，請確保已安裝以下工具：
 
 1. Git (用於版本控制與 GitHub 同步)
 2. Azure CLI (用於執行自動化建置腳本)
 3. Node.js (用於執行前端 Vue)
 4. Docker Desktop (本機測試用，非必備)
+5. Fork 專案 (https://github.com/bst0529/QuantTradingSystem)並下載
 
-## 第二步：基礎設施全自動建置 (Azure)
+## 2. 基礎設施全自動建置 (Azure)
 打開你的 PowerShell，登入 Azure：
 ``` 
 # PowerShell
@@ -84,7 +85,7 @@ Write-Host $AZURE_CREDENTIALS
 Write-Host "=========================================================="
 ```
 
-## 設定 GitHub Actions (CI/CD)
+## 3. 設定 GitHub Actions (CI/CD)
 請到你的 GitHub 專案網頁：
 1. 點擊 Settings -> 左側選單找 Secrets and variables -> Actions。
 2. 點擊 New repository secret，將剛剛 PowerShell 腳本最後印出來的三個資訊 (ACR_USERNAME, ACR_PASSWORD, AZURE_CREDENTIALS) 加進去。
@@ -102,6 +103,7 @@ on:
     paths:
       - 'src/**'
       - '.github/workflows/**'
+  workflow_dispatch: # 加上這行，就能在 GitHub 網頁上手動點擊執行按鈕
 
 # 請確保這裡的變數名稱與你 PowerShell 腳本中的名稱一致
 env:
@@ -160,33 +162,187 @@ jobs:
 
 > 魔法說明：只要你把程式碼 Push 到 GitHub 的 main 分支，這個腳本就會自動打包最新的 Docker Image、上傳，並通知 Azure 把新的 API 跑起來，完全不需要手動操作！
 
-## 啟動前端看盤畫面
-1. 打開終端機，進入前端資料夾：
+## 4.建立 Azure AI 大模型
+0. 如果 Azure 訂閱帳號目前「尚未解鎖」使用 AI 服務（Cognitive Services）的權限
+
+```
+# PowerShell
+# 1. 啟用 Cognitive Services 權限
+az provider register --namespace Microsoft.CognitiveServices
+
+# 2. 確認啟用狀態 (需等待 1~3 分鐘)
+az provider show --namespace Microsoft.CognitiveServices --query "registrationState"
+```
+
+1. 建立 Azure AI 服務並部署 GPT-4o/大模型
+
+> <span style="color:red;">RequestDisallowedByAzure: This policy maintains a set of best available regions where your subscription can deploy resources. 是 Azure 最嚴格的訂閱級別地區鎖定政策 (Policy Lock)。</span>
+
+2. 改用官方 OpenAI API
+> <span style="color:red;">帳號裡面沒有預先儲值（Prepaid）金額，伺服器就會直接把你擋在門外並回傳 429 錯誤。</span>
+
+3. 改用 Groq
+### 步驟 4-1：取得 Groq API 金鑰 (免費)
+   1. 請前往 GroqConsole (console.groq.com)。
+   2. 登入（可以用 Google 帳號直接登入）。
+   3. 在上方選單點擊 API Keys。
+   4. 點擊右上角的 Create API Key，給它隨便取個名字（例如 QuantTrading），然後複製那串以 gsk_ 開頭的金鑰。
+
+### 步驟 4-2：部署 Azure Functions 雲端基礎設施
+請在 PowerShell 中執行以下腳本，這將會為您的 C# 程式碼建立一個專屬的 Serverless 運算大廳，並將剛剛取得的 Groq 金鑰注入環境變數中：
+
+```powershell
+$FUNCTIONS_APP = "fn-quant-ai-$SUFFIX"
+$FUNCTIONS_STORAGE = "stfnshared$SUFFIX"
+
+# 執行前，請將這行換成你剛剛複製的 Groq 金鑰
+$GROQ_API_KEY = "<gsk_你的金鑰請貼在這裡>"
+
+Write-Host " 正在建立 Azure Functions 運算資源..."
+
+# 1. 建立 Function 內部儲存體與 Function App (採用 dotnet-isolated 隔離模式)
+az storage account create --name $FUNCTIONS_STORAGE --resource-group $RG --location $LOC --sku Standard_LRS
+
+az functionapp create `
+    --name $FUNCTIONS_APP `
+    --resource-group $RG `
+    --storage-account $FUNCTIONS_STORAGE `
+    --consumption-plan-location $LOC `
+    --functions-version 4 `
+    --os-type Linux `
+    --runtime dotnet-isolated
+
+# 2. 將 Groq 金鑰安全地寫入雲端環境變數
+az functionapp config appsettings set `
+    --name $FUNCTIONS_APP `
+    --resource-group $RG `
+    --settings "Groq__ApiKey=$GROQ_API_KEY"
+
+Write-Host "Azure Functions 部署完畢，且已成功綁定 Groq 金鑰！"
+```
+檢查 Azure Functions 是否已啟動：
+```
+# PowerShell
+az functionapp show `
+    --name fn-quant-ai-2026 `
+    --resource-group rg-quant-trading-2026 `
+    --query "state" `
+    --output tsv
+```
+> 記得把名稱換成你實際的變數或名稱
+
+取得 FunctionKey (沒使用到，採用大門敞開，免鑰匙進入)
+```
+# PowerShell
+az functionapp keys list --name fn-quant-ai-2026 --resource-group rg-quant-trading-2026 --query "functionKeys.default" --output tsv
+```
+
+
+### 步驟 4-3：AI 代理程式參數調整 (C# .NET 8)
+在後端專案中，我們直接使用標準的 OpenAI NuGet 套件，並在建構子中將底層連線網址替換為 Groq 的伺服器節點。
+
+檔案路徑： src/QuantTrading.Functions/AiAgentFunction.cs
+核心程式碼：
+
+1. 檔案路徑： QuantTradingSystem\src\QuantTrading.Functions 建立一個檔案 local.settings.json 其內容如下：
+```
+# JSON
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    
+    "Groq__ApiKey": "<剛剛從 Groq 複製的長長金鑰貼在這裡>" 
+  }
+}   
+```
+2. 啟動 QuantTrading.Functions
+位置：QuantTradingSystem\src\QuantTrading.Functions
+```
+# PowerShell
+func start
+```
+> 如果還沒安裝 Azure Functions Core Tools
+```
+# PowerShell
+npm i -g azure-functions-core-tools@4 --unsafe-perm true
+```
+
+3. 然後打開 Postman，對著你的本機網址如： http://localhost:7222/api/GetAiAdvice 發送 POST 請求：
+```
+# JSON
+{
+  "marketData": "今日 0050 爆量上漲，突破季線，KD 黃金交叉"
+}
+```
+
+> AI 模型名稱幾個月就會換一次。如果你換了上面這個名字還是報錯，請直接點擊進入 Groq 官方模型列表 (console.groq.com/docs/models)，看表格裡面 Model ID 欄位寫什麼（找有 70b 的通常最聰明），把它複製貼上替換掉就好！
+
+```
+# C#
+# 將 QuantTrading.Functions.AiAgentFunction 中的型號換掉 
+_chatClient = new ChatClient("型號", credential, options);
+```
+3. Azure Functionsh 測試
+如果你還沒有把本機的程式碼推上雲端，你可以在本機的 QuantTrading.Functions 專案目錄下，使用 Azure Functions Core Tools 執行這行指令，將程式碼直接發佈上雲端：
+```
+# PowerShell
+# 請把後面的名字換成你在雲端建立的 Function App 名稱
+func azure functionapp publish fn-quant-ai-2026
+```
+> 取得 url，將之前 Postman 測試連結改用 url
+
+4. 檔案路徑： D:\Code\QuantTradingSystem\src\QuantTrading.Worker\appsettings.json，內容如下：
+```
+# JSON
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=/app/data/quant_data.db;"
+  },
+  "FinMind": {
+    "Token": ""
+  },
+  "AiAgentUrl": "<上面取得的 url>"
+}
+```
+
+5. commit 並推到 github
+6. 查找 quant-api 的 Application Url
+```
+# PowerShell
+az containerapp show `
+  --name $API `
+  --resource-group $RG `
+  --query "properties.configuration.ingress.fqdn" `
+  --output tsv
+```
+
+
+## 5. 啟動前端看盤畫面
+1. 修改資料來源
+> 檔案路徑：QuantTradingSystem\quant-frontend\src\App.vue
+const apiUrl = `https://XXX/api/strategy/0050?startDate=${startDate}&endDate=${endDate}`;
+將 XXX 改為 quant-api 的 Application Url
+
+2. 打開終端機，進入前端資料夾：
 ```
 # Bash
 cd quant-frontend
 ```
 
-2. 安裝套件並啟動：
+3. 安裝套件並啟動：
 ```
 # Bash
 npm install
 npm run dev
 ```
 
-> 特別提示：連接雲端 API
-> 在 App.vue 中，目前的資料來源是指向本地端 (http://localhost:5050)：
-> ```
-> # JavaScript
-> const response = await fetch('http://localhost:5050/api/strategy/0050?...')
-> ```
-> 當你的後端成功透過 CI/CD 部署到 Azure 後，請到 Azure Portal 的 quant-api 頁面複製 Application Url，並將 App.vue 裡的網址替換為雲端網址，例如：
-> ```
-> # JavaScript
-> const response = await fetch('https://quant-api.xxx.koreacentral.azurecontainerapps.io/api/strategy/0050?...')
-> ```
+## 5-1 建立 Azure Static Web App (前端) -- 不可用
+> (LocationNotAvailableForResourceType) The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
+Code: LocationNotAvailableForResourceType
+Message: The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
 
-## 建立 Azure Static Web App (前端)
+> <span style="color:red;">由於 Azure 學生訂閱（Azure for Students）有嚴格的地區防護原則（鎖定 koreacentral），而 Azure 官方並未在韓國機房提供 Static Web Apps 服務。為了達成「100% 繞過限制且完全免費」的終極自動化，我們採用 Azure Storage Account 靜態網站 方案，將前後端收攏在同一機房！</span>
 ```
 # PowerShell
 $SWA = "quant-frontend"
@@ -212,13 +368,9 @@ az staticwebapp create `
 > *  --output-location: Vue 經由 npm run build 打包後的輸出資料夾名稱（通常是 dist）。
 > *  執行這行時，命令列會跳出 GitHub 授權提示，以便 Azure 自動去你的 GitHub 設定部署金鑰。
 
-> (LocationNotAvailableForResourceType) The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
-Code: LocationNotAvailableForResourceType
-Message: The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
 
-> <span style="color:red;">由於 Azure 學生訂閱（Azure for Students）有嚴格的地區防護原則（鎖定 koreacentral），而 Azure 官方並未在韓國機房提供 Static Web Apps 服務。為了達成「100% 繞過限制且完全免費」的終極自動化，我們採用 Azure Storage Account 靜態網站 方案，將前後端收攏在同一機房！</span>
 
-## Azure Storage Account 
+## 5-2 啟用 Azure Storage 靜態網站功能
 這功能完全免費、支援全球存取，而且因為它屬於儲存體，絕對可以蓋在韓國中部！
 1. 開啟儲存體的靜態網站功能
 沿用之前建好的儲存體 $STA，在裡面開闢一個網頁空間：
@@ -241,12 +393,12 @@ az storage account show --name $STA --resource-group $RG --query "primaryEndpoin
 ```
 > 這將網址記下來
 
-3. 上傳網頁
+## 5-3：打包並上傳前端檔案
 既然不能走 SWA 的 GitHub 管道，只要在本地端切換到 quant-frontend 執行打包，然後用 CLI 送上雲端：
 ```
 # PowerShell
 # 切換到前端目錄
-cd D:\Code\Test\QuantTradingSystem\quant-frontend
+cd D:\Code\QuantTradingSystem\quant-frontend
 npm run build
 
 # 把 dist 裡面的所有網頁檔案，直接塞進雲端儲存體的 $web 容器中
@@ -266,15 +418,15 @@ az storage blob upload-batch `
 # 1. 刪除整個雲端資源群組 (API, Worker, DB, 儲存體一次抹除)
 az group delete --name rg-quant-trading-2026 --yes --no-wait
 
-# 查閱資源群組的狀態
+# (選用) 查閱資源群組的刪除進度狀態
 az group show --name rg-quant-trading-2026 --query "properties.provisioningState" --output tsv
 
-# 2. 刪除 GitHub 部署專用的虛擬帳戶
+# 2. 刪除 GitHub CI/CD 專用的虛擬權限帳戶 (Service Principal)
 az ad sp delete --id "http://quant-deploy-sp-2026"
 
-# 複查是否刪除
+# 複查帳戶是否成功刪除
 az ad sp list --display-name "quant-deploy-sp-2026" --query "[].id" --output tsv
 
-# 未刪除
-az ad sp delete --id "把剛剛印出來的ID貼在這裡"
+# (若上方複查有印出殘留的 ID，請複製該 ID 執行此行強制刪除)
+# az ad sp delete --id "把剛剛印出來的ID貼在這裡"
 ```

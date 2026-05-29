@@ -47,7 +47,7 @@ onMounted(async () => {
     const endDate = `${year}-${month}-${day}`;
     const startDate = '2023-01-01';
 
-    const apiUrl = `https://quant-api.politehill-187dbd7a.koreacentral.azurecontainerapps.io/api/strategy/0050?startDate=${startDate}&endDate=${endDate}`;
+    const apiUrl = `https://XXX/api/strategy/0050?startDate=${startDate}&endDate=${endDate}`;
     const response = await fetch(apiUrl);
 
     if (!response.ok) {
