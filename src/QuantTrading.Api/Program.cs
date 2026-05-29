@@ -83,14 +83,20 @@ try
 
         var dataList = data.ToList();
 
-        // 🌟 2. 核心修改：如果 DB 沒資料，觸發即時撈取 (Read-Through Cache)
-        if (!dataList.Any())
+        // 🌟 2. 智慧快取機制 (檢查資料是否夠新)
+        var latestDbDate = dataList.Any() ? dataList.Max(d => d.Date) : DateTime.MinValue;
+
+        // 如果沒資料，【或者】最新資料離查詢終點超過 5 天
+        if (!dataList.Any() || latestDbDate < endDate.AddDays(-5))
         {
-            Log.Information($"⚠️ 資料庫查無 {symbol} ({startDate:yyyy-MM-dd} ~ {endDate:yyyy-MM-dd}) 的資料，觸發即時從 FinMind 撈取...");
+            Log.Information($"⚠️ 資料庫最新資料僅到 {latestDbDate:yyyy-MM-dd}，與目標 {endDate:yyyy-MM-dd} 存在落差，觸發即時從 FinMind 撈取缺漏數據...");
 
             try
             {
-                string url = $"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id={symbol}&start_date={startDate:yyyy-MM-dd}&end_date={endDate:yyyy-MM-dd}";
+                // 💡 優化：只抓取「缺漏區間」的資料，避免重複抓取
+                var fetchStartDate = dataList.Any() ? latestDbDate.AddDays(1) : startDate;
+
+                string url = $"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id={symbol}&start_date={fetchStartDate:yyyy-MM-dd}&end_date={endDate:yyyy-MM-dd}";
                 var response = await url.GetJsonAsync<FinMindResponse>();
 
                 if (response?.msg == "success" && response.data != null && response.data.Any())
@@ -108,16 +114,12 @@ try
                         MLPredictionProb = 0.5
                     }).ToList();
 
-                    // 將抓回來的資料寫入 SQLite 緩存
-
-                    bool inserted = false;
-
+                    // 寫入 SQLite
                     for (int i = 0; i < 5; i++)
                     {
                         try
                         {
                             await repo.InsertPricesAsync(newPrices);
-                            inserted = true;
                             break;
                         }
                         catch
@@ -126,10 +128,11 @@ try
                         }
                     }
 
+                    // 💡 關鍵：將新抓到的資料跟原本的舊資料合併，並重新按日期排序
+                    dataList.AddRange(newPrices);
+                    dataList = dataList.OrderBy(d => d.Date).ToList();
 
-                    // 更新 dataList 讓後續的策略引擎有資料可以算
-                    dataList = newPrices;
-                    Log.Information($"✅ 即時撈取並寫入 {dataList.Count} 筆資料完成！");
+                    Log.Information($"✅ 即時撈取並補齊 {newPrices.Count} 筆資料完成！");
                 }
             }
             catch (Exception ex)

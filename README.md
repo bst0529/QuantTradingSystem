@@ -307,7 +307,8 @@ func azure functionapp publish fn-quant-ai-2026
 ```
 
 5. commit 並推到 github
-6. 查找 quant-api 的 Application Url
+可到 Github > QuantTradingSystem 專案 > 上方的 Actions 查看 CI/CD 的執行結果
+7. 查找 quant-api 的 Application Url
 ```
 # PowerShell
 az containerapp show `
@@ -319,23 +320,10 @@ az containerapp show `
 
 
 ## 5. 啟動前端看盤畫面
-1. 修改資料來源
+修改資料來源
 > 檔案路徑：QuantTradingSystem\quant-frontend\src\App.vue
 const apiUrl = `https://XXX/api/strategy/0050?startDate=${startDate}&endDate=${endDate}`;
 將 XXX 改為 quant-api 的 Application Url
-
-2. 打開終端機，進入前端資料夾：
-```
-# Bash
-cd quant-frontend
-```
-
-3. 安裝套件並啟動：
-```
-# Bash
-npm install
-npm run dev
-```
 
 ## 5-1 建立 Azure Static Web App (前端) -- 不可用
 > (LocationNotAvailableForResourceType) The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
@@ -399,6 +387,7 @@ az storage account show --name $STA --resource-group $RG --query "primaryEndpoin
 # PowerShell
 # 切換到前端目錄
 cd D:\Code\QuantTradingSystem\quant-frontend
+npm install
 npm run build
 
 # 把 dist 裡面的所有網頁檔案，直接塞進雲端儲存體的 $web 容器中
@@ -410,10 +399,18 @@ az storage blob upload-batch `
 ```
 
 ## 大功告成
+如果遇到 CORS 問題
+```
+# PowerShell
+az functionapp cors add `
+  --name $FUNCTIONS_APP `
+  --resource-group $RG `
+  --allowed-origins "<F12 顯示的 origin>"
+```
 
 ## 不留痕跡完整移除環境
 
-如果你想關閉系統並停止所有雲端計費，請在 PowerShell 執行以下兩行指令，即可 100% 乾淨抹除所有雲端資源：
+乾淨抹除所有雲端資源：
 ```
 # 1. 刪除整個雲端資源群組 (API, Worker, DB, 儲存體一次抹除)
 az group delete --name rg-quant-trading-2026 --yes --no-wait

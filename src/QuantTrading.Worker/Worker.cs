@@ -1,8 +1,7 @@
-using YahooFinanceApi;
 using Flurl.Http;
+using QuantTrading.Core.Models;
 using QuantTrading.Core.Repositories;
 using QuantTrading.Core.Services;
-using QuantTrading.Core.Models;
 
 namespace QuantTrading.Worker;
 
@@ -98,18 +97,22 @@ public class Worker : BackgroundService
     // 輔助方法：確保資料庫裡有基本的歷史數據
     private async Task EnsureHistoricalDataAsync(CancellationToken ct)
     {
-        _logger.LogInformation("🔍 正在檢查資料庫資料...");
         var existingData = await _stockRepo.GetHistoricalDataAsync(Symbol, DateTime.Today.AddYears(-1), DateTime.Today);
-        
-        if (existingData != null && existingData.Any()) {
-            _logger.LogInformation("✅ 資料庫已有資料。");
+        var latestDbDate = existingData != null && existingData.Any() ? existingData.Max(d => d.Date) : DateTime.MinValue;
+
+        // 如果資料庫最新資料離今天不到 5 天，代表不需要大範圍補資料
+        if (latestDbDate >= DateTime.Today.AddDays(-5))
+        {
+            _logger.LogInformation($"✅ 資料庫已有近期資料 (最新至 {latestDbDate:yyyy-MM-dd})。");
             return;
         }
 
-        _logger.LogInformation("🌐 啟動 FinMind API 抓取真實 0050 歷史資料...");
+        _logger.LogInformation("🌐 啟動 FinMind API 抓取缺漏的歷史資料...");
 
-        // 設定抓取區間：過去一年到今天
-        string startDate = DateTime.Today.AddYears(-1).ToString("yyyy-MM-dd");
+        // 💡 優化：如果資料庫全空就抓過去一年，否則只抓「資料庫最後一天」到「今天」
+        string startDate = existingData != null && existingData.Any()
+            ? latestDbDate.AddDays(1).ToString("yyyy-MM-dd")
+            : DateTime.Today.AddYears(-1).ToString("yyyy-MM-dd");
         string endDate = DateTime.Today.ToString("yyyy-MM-dd");
         string url = $"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=0050&start_date={startDate}&end_date={endDate}";
         
