@@ -224,7 +224,7 @@ Write-Host "Azure Functions 部署完畢，且已成功綁定 Groq 金鑰！"
 ```
 # PowerShell
 az functionapp show `
-    --name fn-quant-ai-2026 `
+    --name $FUNCTIONS_APP `
     --resource-group rg-quant-trading-2026 `
     --query "state" `
     --output tsv
@@ -234,7 +234,7 @@ az functionapp show `
 取得 FunctionKey (沒使用到，採用大門敞開，免鑰匙進入)
 ```
 # PowerShell
-az functionapp keys list --name fn-quant-ai-2026 --resource-group rg-quant-trading-2026 --query "functionKeys.default" --output tsv
+az functionapp keys list --name $FUNCTIONS_APP --resource-group rg-quant-trading-2026 --query "functionKeys.default" --output tsv
 ```
 
 
@@ -288,7 +288,7 @@ _chatClient = new ChatClient("型號", credential, options);
 ```
 # PowerShell
 # 請把後面的名字換成你在雲端建立的 Function App 名稱
-func azure functionapp publish fn-quant-ai-2026
+func azure functionapp publish $FUNCTIONS_APP
 ```
 > 取得 url，將之前 Postman 測試連結改用 url
 
@@ -319,7 +319,7 @@ az containerapp show `
 ```
 
 
-## 5. 啟動前端看盤畫面
+## 5. 前端佈署
 修改資料來源
 > 檔案路徑：QuantTradingSystem\quant-frontend\src\App.vue
 const apiUrl = `https://XXX/api/strategy/0050?startDate=${startDate}&endDate=${endDate}`;
@@ -413,16 +413,26 @@ az functionapp cors add `
 乾淨抹除所有雲端資源：
 ```
 # 1. 刪除整個雲端資源群組 (API, Worker, DB, 儲存體一次抹除)
-az group delete --name rg-quant-trading-2026 --yes --no-wait
+az group delete --name $RG --yes --no-wait
 
 # (選用) 查閱資源群組的刪除進度狀態
-az group show --name rg-quant-trading-2026 --query "properties.provisioningState" --output tsv
+az group show --name $RG --query "properties.provisioningState" --output tsv
 
 # 2. 刪除 GitHub CI/CD 專用的虛擬權限帳戶 (Service Principal)
-az ad sp delete --id "http://quant-deploy-sp-2026"
+## 1. 取得 Service Principal 的 Object ID 並存入變數
+$spId = az ad sp list --display-name "quant-deploy-sp-$SUFFIX" --query "[].id" --output tsv
+
+## 2. 檢查變數是否為空，如果有找到就執行刪除
+if ($spId) {
+    Write-Host "找到 Service Principal，準備刪除 Object ID: $spId"
+    az ad sp delete --id $spId
+    Write-Host "刪除成功！"
+} else {
+    Write-Host "找不到名為 quant-deploy-sp-$SUFFIX 的 Service Principal。"
+}
 
 # 複查帳戶是否成功刪除
-az ad sp list --display-name "quant-deploy-sp-2026" --query "[].id" --output tsv
+az ad sp list --display-name "quant-deploy-sp-$SUFFIX" --query "[].id" --output tsv
 
 # (若上方複查有印出殘留的 ID，請複製該 ID 執行此行強制刪除)
 # az ad sp delete --id "把剛剛印出來的ID貼在這裡"
