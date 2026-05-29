@@ -5,6 +5,7 @@
 2. Azure CLI (用於執行自動化建置腳本)
 3. Node.js (用於執行前端 Vue)
 4. Docker Desktop (本機測試用，非必備)
+5. Fork 專案 (https://github.com/bst0529/QuantTradingSystem) 並下載
 
 ## 2. 基礎設施全自動建置 (Azure)
 打開你的 PowerShell，登入 Azure：
@@ -102,6 +103,7 @@ on:
     paths:
       - 'src/**'
       - '.github/workflows/**'
+  workflow_dispatch: # 加上這行，就能在 GitHub 網頁上手動點擊執行按鈕
 
 # 請確保這裡的變數名稱與你 PowerShell 腳本中的名稱一致
 env:
@@ -161,7 +163,7 @@ jobs:
 > 魔法說明：只要你把程式碼 Push 到 GitHub 的 main 分支，這個腳本就會自動打包最新的 Docker Image、上傳，並通知 Azure 把新的 API 跑起來，完全不需要手動操作！
 
 ## 4.建立 Azure AI 大模型
-0. 如果 Azure 訂閱帳號目前「尚未解鎖」使用 AI 服務（Cognitive Services）的權限
+0. 如果 Azure 訂閱帳號目前「尚未解鎖」使用 AI 服務（Cognitive Services）的權限 -- 略過
 
 ```
 # PowerShell
@@ -172,11 +174,11 @@ az provider register --namespace Microsoft.CognitiveServices
 az provider show --namespace Microsoft.CognitiveServices --query "registrationState"
 ```
 
-1. 建立 Azure AI 服務並部署 GPT-4o/大模型
+1. 建立 Azure AI 服務並部署 GPT-4o/大模型 -- 不可行
 
 > <span style="color:red;">RequestDisallowedByAzure: This policy maintains a set of best available regions where your subscription can deploy resources. 是 Azure 最嚴格的訂閱級別地區鎖定政策 (Policy Lock)。</span>
 
-2. 改用官方 OpenAI API
+2. 改用官方 OpenAI API -- 不可行
 > <span style="color:red;">帳號裡面沒有預先儲值（Prepaid）金額，伺服器就會直接把你擋在門外並回傳 429 錯誤。</span>
 
 3. 改用 Groq
@@ -194,7 +196,7 @@ $FUNCTIONS_APP = "fn-quant-ai-$SUFFIX"
 $FUNCTIONS_STORAGE = "stfnshared$SUFFIX"
 
 # 執行前，請將這行換成你剛剛複製的 Groq 金鑰
-$GROQ_API_KEY = "gsk_你的金鑰請貼在這裡"
+$GROQ_API_KEY = "<gsk_你的金鑰請貼在這裡>"
 
 Write-Host " 正在建立 Azure Functions 運算資源..."
 
@@ -222,18 +224,12 @@ Write-Host "Azure Functions 部署完畢，且已成功綁定 Groq 金鑰！"
 ```
 # PowerShell
 az functionapp show `
-    --name fn-quant-ai-2026 `
+    --name $FUNCTIONS_APP `
     --resource-group rg-quant-trading-2026 `
     --query "state" `
     --output tsv
 ```
 > 記得把名稱換成你實際的變數或名稱
-
-取得 FunctionKey (沒使用到，採用大門敞開，免鑰匙進入)
-```
-# PowerShell
-az functionapp keys list --name fn-quant-ai-2026 --resource-group rg-quant-trading-2026 --query "functionKeys.default" --output tsv
-```
 
 
 ### 步驟 4-3：AI 代理程式參數調整 (C# .NET 8)
@@ -250,11 +246,23 @@ az functionapp keys list --name fn-quant-ai-2026 --resource-group rg-quant-tradi
   "Values": {
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
     
-    "Groq__ApiKey": "剛剛從 Groq 複製的長長金鑰貼在這裡" 
+    "Groq__ApiKey": "<剛剛從 Groq 複製的長長金鑰貼在這裡>" 
   }
 }   
 ```
-2. 然後打開 Postman，對著你的本機網址 http://localhost:7222/api/GetAiAdvice 發送 POST 請求：
+2. 啟動 QuantTrading.Functions
+位置：QuantTradingSystem\src\QuantTrading.Functions
+```
+# PowerShell
+func start
+```
+> 如果還沒安裝 Azure Functions Core Tools
+```
+# PowerShell
+npm i -g azure-functions-core-tools@4 --unsafe-perm true
+```
+
+3. 然後打開 Postman，對著你的本機網址如： http://localhost:7222/api/GetAiAdvice 發送 POST 請求：
 ```
 # JSON
 {
@@ -272,7 +280,7 @@ _chatClient = new ChatClient("型號", credential, options);
 3. Azure Functionsh 測試
 如果你還沒有把本機的程式碼推上雲端，你可以在本機的 QuantTrading.Functions 專案目錄下，使用 Azure Functions Core Tools 執行這行指令，將程式碼直接發佈上雲端：
 ```
-# PowerShell
+# Bash
 # 請把後面的名字換成你在雲端建立的 Function App 名稱
 func azure functionapp publish fn-quant-ai-2026
 ```
@@ -292,40 +300,24 @@ func azure functionapp publish fn-quant-ai-2026
 }
 ```
 
-## 5. 啟動前端看盤畫面
-1. 打開終端機，進入前端資料夾：
+5. commit 並推到 github
+可到 Github > QuantTradingSystem 專案 > 上方的 Actions 查看 CI/CD 的執行結果
+7. 查找 quant-api 的 Application Url
 ```
-# Bash
-cd quant-frontend
-```
-
-2. 安裝套件並啟動：
-```
-# Bash
-npm install
-npm run dev
+# PowerShell
+az containerapp show `
+  --name $API `
+  --resource-group $RG `
+  --query "properties.configuration.ingress.fqdn" `
+  --output tsv
 ```
 
-> 特別提示：連接雲端 API
-> 在 App.vue 中，目前的資料來源是指向本地端 (http://localhost:5050)：
-> ```
-> # JavaScript
-> const response = await fetch('http://localhost:5050/api/strategy/0050?...')
-> ```
-> 當你的後端成功透過 CI/CD 部署到 Azure 後，請取得 Azure Portal 的 quant-api 的 Application Url，並將 App.vue 裡的網址替換為雲端網址，例如：
-> ```
-> # PowerShell
-> az containerapp show `
->   --name quant-api `
->   --resource-group rg-quant-trading-2026 `
->   --query "properties.configuration.ingress.fqdn" `
->   --output tsv 
-> ```
 
-> ```
-> # JavaScript
-> const response = await fetch('https://quant-api.xxx.koreacentral.azurecontainerapps.io/api/strategy/0050?...')
-> ```
+## 5. 前端佈署
+修改資料來源
+> 檔案路徑：QuantTradingSystem\quant-frontend\src\App.vue
+const apiUrl = `https://XXX/api/strategy/0050?startDate=${startDate}&endDate=${endDate}`;
+將 XXX 改為 quant-api 的 Application Url
 
 ## 5-1 建立 Azure Static Web App (前端) -- 不可用
 > (LocationNotAvailableForResourceType) The provided location 'koreacentral' is not available for resource type 'Microsoft.Web/staticSites'. List of available regions for the resource type is 'centralus,eastus2,westus2,westeurope,eastasia'.
@@ -359,6 +351,25 @@ az staticwebapp create `
 > *  執行這行時，命令列會跳出 GitHub 授權提示，以便 Azure 自動去你的 GitHub 設定部署金鑰。
 
 
+如果遇到錯誤
+```
+The command failed with an unexpected error. Here is the traceback:
+[Errno 13] Permission denied: 'C:\\Users\\bst05\\.azure\\cliextensions\\staticwebapp\\azext_staticwebapp\\azext_metadata.json'
+Traceback (most recent call last):
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\knack/cli.py", line 233, in invoke
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/commands/__init__.py", line 523, in execute
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/__init__.py", line 502, in load_command_table
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/__init__.py", line 392, in _update_command_table_from_extensions
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/extension/__init__.py", line 148, in get_metadata
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/extension/__init__.py", line 177, in get_azext_metadata
+PermissionError: [Errno 13] Permission denied: 'C:\\Users\\bst05\\.azure\\cliextensions\\staticwebapp\\azext_staticwebapp\\azext_metadata.json'
+```
+1. 刪除資料夾 C:\Users\bst05\.azure\cliextensions\staticwebapp\
+2. 將 staticwebapp 加回去
+```
+# PowerShell
+az extension add --name staticwebapp
+```
 
 ## 5-2 啟用 Azure Storage 靜態網站功能
 這功能完全免費、支援全球存取，而且因為它屬於儲存體，絕對可以蓋在韓國中部！
@@ -389,6 +400,7 @@ az storage account show --name $STA --resource-group $RG --query "primaryEndpoin
 # PowerShell
 # 切換到前端目錄
 cd D:\Code\QuantTradingSystem\quant-frontend
+npm install
 npm run build
 
 # 把 dist 裡面的所有網頁檔案，直接塞進雲端儲存體的 $web 容器中
@@ -400,19 +412,37 @@ az storage blob upload-batch `
 ```
 
 ## 大功告成
+如果遇到 CORS 問題
+```
+# PowerShell
+az functionapp cors add `
+  --name $FUNCTIONS_APP `
+  --resource-group $RG `
+  --allowed-origins "<F12 顯示的 origin>"
+```
 
 ## 不留痕跡完整移除環境
 
-如果你想關閉系統並停止所有雲端計費，請在 PowerShell 執行以下兩行指令，即可 100% 乾淨抹除所有雲端資源：
+乾淨抹除所有雲端資源：
 ```
 # 1. 刪除整個雲端資源群組 (API, Worker, DB, 儲存體一次抹除)
-az group delete --name rg-quant-trading-2026 --yes --no-wait
+az group delete --name $RG --yes --no-wait
 
 # (選用) 查閱資源群組的刪除進度狀態
-az group show --name rg-quant-trading-2026 --query "properties.provisioningState" --output tsv
+az group show --name $RG --query "properties.provisioningState" --output tsv
 
 # 2. 刪除 GitHub CI/CD 專用的虛擬權限帳戶 (Service Principal)
-az ad sp delete --id "http://quant-deploy-sp-2026"
+## 1. 取得 Service Principal 的 Object ID 並存入變數
+$spId = az ad sp list --display-name "quant-deploy-sp-2026" --query "[].id" --output tsv
+
+## 2. 檢查變數是否為空，如果有找到就執行刪除
+if ($spId) {
+    Write-Host "找到 Service Principal，準備刪除 Object ID: $spId"
+    az ad sp delete --id $spId
+    Write-Host "刪除成功！"
+} else {
+    Write-Host "找不到名為 quant-deploy-sp-2026 的 Service Principal。"
+}
 
 # 複查帳戶是否成功刪除
 az ad sp list --display-name "quant-deploy-sp-2026" --query "[].id" --output tsv
