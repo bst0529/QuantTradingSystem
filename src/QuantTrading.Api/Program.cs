@@ -36,10 +36,6 @@ try
 {
     Log.Information("QuantTrading.Api 正在啟動...");
 
-    // 🛡️ 資安設定 1：嚴格的 CORS 策略
-    var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
-                         ?? new[] { "http://localhost:5173" }; // Vue 3 預設開發 Port
-
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("AllowAll", policy =>
@@ -59,8 +55,20 @@ try
 
     app.UseCors("AllowAll");
 
-    // 🛡️ 資安設定 2：強制 HTTPS (生產環境必備)
-    //app.UseHttpsRedirection();
+    // 確保主 API 啟動時，SQLite 內部一定有 DailyPrice 資料表
+    using (var scope = app.Services.CreateScope())
+    {
+        var repo = app.Services.GetRequiredService<StockRepository>();
+        try
+        {
+            repo.EnsureTableExists();
+            Log.Information("✅ 主 API 端資料庫資料表初始化確認成功。");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "❌ 主 API 初始化資料表失敗！");
+        }
+    }
 
     // 📈 建立 Minimal API 端點
     app.MapGet("/api/strategy/{symbol}", async (string symbol, DateTime startDate, DateTime endDate, StockRepository repo, StrategyEngine engine) =>
@@ -114,25 +122,36 @@ try
                         MLPredictionProb = 0.5
                     }).ToList();
 
-                    // 寫入 SQLite
+                    // 將抓回來的資料寫入 SQLite 緩存
+                    bool inserted = false;
+
                     for (int i = 0; i < 5; i++)
                     {
                         try
                         {
                             await repo.InsertPricesAsync(newPrices);
+                            inserted = true;
                             break;
                         }
-                        catch
+                        catch (Exception ex) // 💡 1. 捕捉實體錯誤原因
                         {
+                            Log.Warning($"⚠️ 第 {i + 1} 次嘗試寫入 SQLite 失敗: {ex.Message}");
                             await Task.Delay(3000);
                         }
+                    }
+
+                    if (!inserted)
+                    {
+                        Log.Error("❌ 嚴重錯誤：歷經 5 次重試，FinMind 數據依舊無法寫入 SQLite 資料庫！");
+                    }
+                    else
+                    {
+                        Log.Information($"✅ 即時撈取並成功寫入資料庫共 {newPrices.Count} 筆資料！");
                     }
 
                     // 💡 關鍵：將新抓到的資料跟原本的舊資料合併，並重新按日期排序
                     dataList.AddRange(newPrices);
                     dataList = dataList.OrderBy(d => d.Date).ToList();
-
-                    Log.Information($"✅ 即時撈取並補齊 {newPrices.Count} 筆資料完成！");
                 }
             }
             catch (Exception ex)
