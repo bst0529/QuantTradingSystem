@@ -1,4 +1,4 @@
-name: Deploy API to Azure Container Apps
+name: Deploy API and Worker to Azure Container Apps
 
 on:
   push:
@@ -6,20 +6,23 @@ on:
     paths:
       - 'src/**'
       - '.github/workflows/**'
-  workflow_dispatch: # 加上這行，就能在 GitHub 網頁上手動點擊執行按鈕
+  workflow_dispatch: # 允許在 GitHub 網頁上手動點擊執行按鈕
 
-# 請確保這裡的變數名稱與你 PowerShell 腳本中的名稱一致
 env:
   ACR_NAME: registryquant2026 # 若有改後綴，請同步修改
-  IMAGE_NAME: quant-api
-  CONTAINER_APP_NAME: quant-api
   RESOURCE_GROUP: rg-quant-trading-2026 # 若有改後綴，請同步修改
+  
+  # API 參數
+  API_IMAGE_NAME: quant-api
+  API_APP_NAME: quant-api
+  
+  # Worker 參數
+  WORKER_IMAGE_NAME: quant-worker
+  WORKER_APP_NAME: quant-worker
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      TZ: Asia/Taipei # 這裡設定台灣時區
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -31,34 +34,67 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
+      # ==========================================
+      # 1. 建置與部署 API (第一線服務)
+      # ==========================================
       - name: Build and Push API Docker Image
         uses: docker/build-push-action@v4
         with:
           context: .
           file: ./src/QuantTrading.Api/Dockerfile
           push: true
-          tags: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          tags: ${{ env.ACR_NAME }}.azurecr.io/${{ env.API_IMAGE_NAME }}:${{ github.sha }}
 
       - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Azure Container App
+      - name: Deploy API to Azure Container App
         uses: azure/CLI@v1
         with:
           azcliversion: latest
           inlineScript: |
+            # 建立並更新 API，開放 8080 port 與外部連線
             az containerapp up \
-              --name ${{ env.CONTAINER_APP_NAME }} \
+              --name ${{ env.API_APP_NAME }} \
               --resource-group ${{ env.RESOURCE_GROUP }} \
-              --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+              --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.API_IMAGE_NAME }}:${{ github.sha }} \
               --target-port 8080 \
               --ingress external \
               --env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
             
-            # 掛載儲存體 (Azure CLI containerapp up 尚未完整支援 volume，用 update 補上)
+            # 掛載共用儲存體
             az containerapp update \
-              --name ${{ env.CONTAINER_APP_NAME }} \
+              --name ${{ env.API_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --set-env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
+
+      # ==========================================
+      # 2. 建置與部署 Worker (背景苦力服務)
+      # ==========================================
+      - name: Build and Push Worker Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./src/QuantTrading.Worker/Dockerfile
+          push: true
+          tags: ${{ env.ACR_NAME }}.azurecr.io/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Deploy Worker to Azure Container App
+        uses: azure/CLI@v1
+        with:
+          azcliversion: latest
+          inlineScript: |
+            # 建立 Worker，不設定 ingress，作為純背景服務執行
+            az containerapp up \
+              --name ${{ env.WORKER_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }} \
+              --env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
+            
+            # 掛載相同的共用儲存體，讓 Worker 寫入的資料 API 能讀得到！
+            az containerapp update \
+              --name ${{ env.WORKER_APP_NAME }} \
               --resource-group ${{ env.RESOURCE_GROUP }} \
               --set-env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
