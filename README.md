@@ -421,7 +421,6 @@ az staticwebapp create `
 ```
 
 ## 5-2 啟用 Azure Storage 靜態網站功能
-這功能完全免費、支援全球存取，而且因為它屬於儲存體，絕對可以蓋在韓國中部！
 1. 開啟儲存體的靜態網站功能
 沿用之前建好的儲存體 $STA，在裡面開闢一個網頁空間：
 ```
@@ -468,6 +467,13 @@ az storage blob upload-batch `
 
 ## 大功告成
 如果遇到 CORS 問題
+> 造成問題的原因：
+> 1. 前端網頁是放在 Azure Storage 上
+> 2. 顧問 API (後端) 是放在 Azure Functions
+> 
+> 因為這兩個是完全不同的網域 (Domain)，當前端試圖用 fetch 去拿後端資料時，瀏覽器會先發送一個「預檢請求 (Preflight)」，問後端說：「請問你允許這個前端網址來拿資料嗎？」
+結果你的 Azure Function 沒有把前端的網址設定在「白名單」裡，所以沒有回傳 Access-Control-Allow-Origin 的標頭，瀏覽器基於安全考量，就把這個請求擋下來了。
+
 ```
 # PowerShell
 # --allowed-origins: 允許跨來源資源共用 (CORS)，將前端靜態網站的 URL 加進白名單，讓瀏覽器允許前端對 Function 發出請求

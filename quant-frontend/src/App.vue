@@ -103,7 +103,7 @@ onMounted(async () => {
     const startDate = '2023-01-01';
     const endDate = getTodayString();
     
-    const response = await fetch(`https://quant-api.delightfulforest-8bb7d871.koreacentral.azurecontainerapps.io/api/strategy/0050?startDate=${startDate}&endDate=${endDate}`);
+    const response = await fetch(`https://quant-api.wittybay-a3e0cea2.koreacentral.azurecontainerapps.io/api/strategy/0050?startDate=${startDate}&endDate=${endDate}`);
     if (!response.ok) throw new Error(`API 請求失敗: ${response.status}`);
     
     const jsonResponse = await response.json();
