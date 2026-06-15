@@ -1,100 +1,88 @@
-name: Deploy API and Worker to Azure Container Apps
+name: Deploy API to Azure Container Apps
 
+# ==========================================
+# 1. 觸發條件設定 (Triggers)
+# ==========================================
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ] # 當程式碼 push 到 main 分支時自動觸發
     paths:
-      - 'src/**'
-      - '.github/workflows/**'
-  workflow_dispatch: # 允許在 GitHub 網頁上手動點擊執行按鈕
+      - 'src/**'                 # 只有當 src 資料夾內的程式碼有異動時才觸發
+      - '.github/workflows/**'   # 或是這個 YAML 腳本本身有修改時觸發
+  workflow_dispatch: # 允許在 GitHub 網頁 Actions 介面中「手動」點擊按鈕觸發執行
 
+# ==========================================
+# 2. 全域環境變數設定 (Environment Variables)
+# ==========================================
+# 請確保這裡的變數名稱與你基礎設施腳本 (PowerShell) 中的名稱一致
 env:
-  ACR_NAME: registryquant2026 # 若有改後綴，請同步修改
-  RESOURCE_GROUP: rg-quant-trading-2026 # 若有改後綴，請同步修改
-  
-  # API 參數
-  API_IMAGE_NAME: quant-api
-  API_APP_NAME: quant-api
-  
-  # Worker 參數
-  WORKER_IMAGE_NAME: quant-worker
-  WORKER_APP_NAME: quant-worker
+  ACR_NAME: registryquant2026           # 你的 Azure Container Registry (ACR) 名稱
+  IMAGE_NAME: quant-api                 # 準備打包的 Docker 映像檔名稱
+  CONTAINER_APP_NAME: quant-api         # Azure Container App 的資源名稱
+  RESOURCE_GROUP: rg-quant-trading-2026 # 資源群組名稱
 
+# ==========================================
+# 3. 執行工作區塊 (Jobs)
+# ==========================================
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # 使用 GitHub 提供的最新版 Ubuntu 虛擬機來執行自動化任務
+    
     steps:
+      # 步驟 A: 將 GitHub 儲存庫的程式碼下載到虛擬機中
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      # 步驟 B: 登入 Azure Container Registry (ACR)
       - name: Log in to Azure Container Registry (ACR)
         uses: docker/login-action@v2
         with:
           registry: ${{ env.ACR_NAME }}.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          username: ${{ secrets.ACR_USERNAME }} # 從 GitHub Secrets 讀取帳號
+          password: ${{ secrets.ACR_PASSWORD }} # 從 GitHub Secrets 讀取密碼
 
-      # ==========================================
-      # 1. 建置與部署 API (第一線服務)
-      # ==========================================
+      # 步驟 C: 根據 Dockerfile 打包應用程式，並推送到 ACR
       - name: Build and Push API Docker Image
         uses: docker/build-push-action@v4
         with:
           context: .
           file: ./src/QuantTrading.Api/Dockerfile
           push: true
-          tags: ${{ env.ACR_NAME }}.azurecr.io/${{ env.API_IMAGE_NAME }}:${{ github.sha }}
+          # 給予映像檔標籤 (Tag)，使用 GitHub 此次 Commit 的 SHA 碼作為唯一版號
+          tags: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
+      # 步驟 D: 登入 Azure 帳號 (取得操作雲端資源的權限)
       - name: Azure Login
         uses: azure/login@v1
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }} # 從 GitHub Secrets 讀取 Service Principal 憑證
 
-      - name: Deploy API to Azure Container App
+      # 步驟 E: 透過 Azure CLI 指令更新並部署 Container App
+      - name: Deploy to Azure Container App
         uses: azure/CLI@v1
         with:
           azcliversion: latest
           inlineScript: |
-            # 建立並更新 API，開放 8080 port 與外部連線
+            # 1. 部署/更新容器與縮放規則
+            # --image: 指定剛剛推送至 ACR 的映像檔與版本標籤
+            # --target-port: 容器內部應用程式聽取的 Port (此 API 為 8080)
+            # --ingress external: 開放外部網路存取，給前端打 API 用
+            # --env-vars: 注入資料庫連線字串的環境變數
+            # --min-replicas 0: 【省錢關鍵】無流量時自動縮減為 0 個容器 (Serverless)
+            # --max-replicas 10: 【效能關鍵】大流量時最多開啟 10 個容器來處理請求
             az containerapp up \
-              --name ${{ env.API_APP_NAME }} \
+              --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.RESOURCE_GROUP }} \
-              --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.API_IMAGE_NAME }}:${{ github.sha }} \
+              --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
               --target-port 8080 \
               --ingress external \
-              --env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
+              --env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;" \
+              --min-replicas 0 \
+              --max-replicas 10
             
-            # 掛載共用儲存體
+            # 2. 確保環境變數與儲存空間設定生效
+            # 使用 update 確保雲端 SQLite 所需的環境變數在資源更新時不會遺失
             az containerapp update \
-              --name ${{ env.API_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --set-env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
-
-      # ==========================================
-      # 2. 建置與部署 Worker (背景苦力服務)
-      # ==========================================
-      - name: Build and Push Worker Docker Image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./src/QuantTrading.Worker/Dockerfile
-          push: true
-          tags: ${{ env.ACR_NAME }}.azurecr.io/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }}
-
-      - name: Deploy Worker to Azure Container App
-        uses: azure/CLI@v1
-        with:
-          azcliversion: latest
-          inlineScript: |
-            # 建立 Worker，不設定 ingress，作為純背景服務執行
-            az containerapp up \
-              --name ${{ env.WORKER_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }} \
-              --env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
-            
-            # 掛載相同的共用儲存體，讓 Worker 寫入的資料 API 能讀得到！
-            az containerapp update \
-              --name ${{ env.WORKER_APP_NAME }} \
+              --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.RESOURCE_GROUP }} \
               --set-env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
