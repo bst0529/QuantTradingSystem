@@ -68,21 +68,23 @@ jobs:
             # --target-port: 容器內部應用程式聽取的 Port (此 API 為 8080)
             # --ingress external: 開放外部網路存取，給前端打 API 用
             # --env-vars: 注入資料庫連線字串的環境變數
-            # --min-replicas 0: 【省錢關鍵】無流量時自動縮減為 0 個容器 (Serverless)
-            # --max-replicas 10: 【效能關鍵】大流量時最多開啟 10 個容器來處理請求
+            # 注意：up 指令不支援縮放參數，所以只做基礎部署
             az containerapp up \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.RESOURCE_GROUP }} \
               --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
               --target-port 8080 \
               --ingress external \
-              --env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;" \
-              --min-replicas 0 \
-              --max-replicas 10
+              --env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
             
             # 2. 確保環境變數與儲存空間設定生效
             # 使用 update 確保雲端 SQLite 所需的環境變數在資源更新時不會遺失
+            # 透過 update 指令確保環境變數生效，並套用自動縮放規則
+            # --min-replicas 0: 【省錢關鍵】無流量時自動縮減為 0 個容器 (Serverless)
+            # --max-replicas 10: 【效能關鍵】大流量時最多開啟 10 個容器來處理請求
             az containerapp update \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.RESOURCE_GROUP }} \
-              --set-env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;"
+              --set-env-vars "ConnectionStrings__DefaultConnection=Data Source=/app/data/quant_data.db;" \
+              --min-replicas 0 \
+              --max-replicas 10
